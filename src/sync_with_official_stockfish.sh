@@ -35,7 +35,20 @@ echo "Pushing my local master branch to my online GitHub repository..."
 
 echo
 echo "Compiling new master..."
-./makefish.sh
+if [ -f ./makefish.sh ] ; then
+  ./makefish.sh
+else
+    echo "Cannot find ./makefish.sh. You probably have to do..."
+    echo ""
+    echo "git merge msys64"
+    echo "git HEAD~1"
+    echo "git status"
+    echo ""
+    echo "This should get the necessary windows build scripts and"
+    echo "make the untracked."
+fi
+
+# Linux
 #make clean
 #make build ARCH=x86-64-modern -j 8
 #make net
