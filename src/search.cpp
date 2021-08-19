@@ -1116,6 +1116,12 @@ moves_loop: // When in check, search starts from here
 
       // Step 15. Make the move
       pos.do_move(move, st, givesCheck);
+      // jomega: Print the move being made.
+      if (Options["Debug"]) {
+          sync_cout << "info depth " << depth
+                    << " do_move " << UCI::move(move, pos.is_chess960())
+                    << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      }
 
       // Step 16. Late moves reduction / extension (LMR, ~200 Elo)
       // We use various heuristics for the sons of a node after the first son has
@@ -1223,6 +1229,13 @@ moves_loop: // When in check, search starts from here
 
       // Step 18. Undo move
       pos.undo_move(move);
+      // jomega: Print the move being undone.
+      if (Options["Debug"]) {
+          sync_cout << "info depth " << depth
+                    << " undo_move " << UCI::move(move, pos.is_chess960())
+                    << " value " << value
+                    << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      }
 
       assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
 
