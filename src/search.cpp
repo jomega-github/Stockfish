@@ -1410,6 +1410,12 @@ moves_loop: // When in check, search starts from here
     bool pvHit, givesCheck, captureOrPromotion;
     int moveCount;
 
+    if (Options["Debug"])
+    {
+      sync_cout << "info depth " << depth
+                << " qsearch called" << sync_endl;
+    }
+
     if (PvNode)
     {
         oldAlpha = alpha; // To flag BOUND_EXACT when eval above alpha and no available moves
@@ -1570,8 +1576,21 @@ moves_loop: // When in check, search starts from here
 
       // Make and search the move
       pos.do_move(move, st, givesCheck);
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " qsearch do_move " << UCI::move(move, pos.is_chess960())
+                  << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      }
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " qsearch undo_move " << UCI::move(move, pos.is_chess960())
+                  << " value " << UCI::value(value)
+                  << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      }
 
       assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
 
