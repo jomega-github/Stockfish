@@ -940,9 +940,31 @@ moves_loop: // When in check, search starts from here
                                       ss->killers,
                                       ss->ply);
 
+    // jomega: I need my own copy.
+    MovePicker my_mp(pos, ttMove, depth, &thisThread->mainHistory,
+                                         &thisThread->lowPlyHistory,
+                                         &captureHistory,
+                                         contHist,
+                                         countermove,
+                                         ss->killers,
+                                         ss->ply);
+
     value = bestValue;
     singularQuietLMR = moveCountPruning = false;
     bool doubleExtension = false;
+
+    std::stringstream ss_out;
+    // jomega: What moves are going to be considered at the beginning.
+    if (Options["Debug"] && false)
+    {
+      ss_out << "info movepicker_step_12";
+      while ((move = my_mp.next_move(moveCountPruning)) != MOVE_NONE)
+      {
+        assert(is_ok(move));
+        ss_out << " " << UCI::move(move, pos.is_chess960());
+      }
+      sync_cout << ss_out.str() << sync_endl;
+    }
 
     // Indicate PvNodes that will probably fail low if the node was searched
     // at a depth equal or greater than the current depth, and the result of this search was a fail low.
@@ -1117,10 +1139,11 @@ moves_loop: // When in check, search starts from here
       // Step 15. Make the move
       pos.do_move(move, st, givesCheck);
       // jomega: Print the move being made.
-      if (Options["Debug"]) {
-          sync_cout << "info depth " << depth
-                    << " do_move " << UCI::move(move, pos.is_chess960())
-                    << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " do_move " << UCI::move(move, pos.is_chess960())
+                  << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
       }
 
       // Step 16. Late moves reduction / extension (LMR, ~200 Elo)
@@ -1230,11 +1253,12 @@ moves_loop: // When in check, search starts from here
       // Step 18. Undo move
       pos.undo_move(move);
       // jomega: Print the move being undone.
-      if (Options["Debug"]) {
-          sync_cout << "info depth " << depth
-                    << " undo_move " << UCI::move(move, pos.is_chess960())
-                    << " value " << value
-                    << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " undo_move " << UCI::move(move, pos.is_chess960())
+                  << " value " << UCI::value(value)
+                  << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
       }
 
       assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
