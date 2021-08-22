@@ -1082,9 +1082,13 @@ make_v:
 Value Eval::evaluate(const Position& pos) {
 
   Value v;
+  bool classical_value = false;
 
   if (!Eval::useNNUE)
-      v = Evaluation<NO_TRACE>(pos).value();
+  {
+    classical_value = true;
+    v = Evaluation<NO_TRACE>(pos).value();
+  }
   else
   {
       // Scale and shift NNUE for compatibility with search and classical evaluation
@@ -1107,9 +1111,11 @@ Value Eval::evaluate(const Position& pos) {
       int r50 = pos.rule50_count();
       Value psq = Value(abs(eg_value(pos.psq_score())));
       bool classical = psq * 5 > (750 + pos.non_pawn_material() / 64) * (5 + r50);
+      classical_value = classical;
 
       v = classical ? Evaluation<NO_TRACE>(pos).value()  // classical
                     : adjusted_NNUE();                   // NNUE
+
   }
 
   // Damp down the evaluation linearly when shuffling
@@ -1117,6 +1123,18 @@ Value Eval::evaluate(const Position& pos) {
 
   // Guarantee evaluation does not hit the tablebase range
   v = std::clamp(v, VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
+
+  if (Options["Debug"])
+  {
+    if (classical_value)
+    {
+      sync_cout << "info static_evaluate classical value " << UCI::value(v) << sync_endl;
+    }   
+    else
+    {
+      sync_cout << "info static_evaluate NNue value " << UCI::value(v) << sync_endl;
+    }
+  }
 
   return v;
 }

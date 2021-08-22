@@ -1410,7 +1410,7 @@ moves_loop: // When in check, search starts from here
     bool pvHit, givesCheck, captureOrPromotion;
     int moveCount;
 
-    if (Options["Debug"])
+    if (PvNode && Options["Debug"])
     {
       sync_cout << "info depth " << depth
                 << " qsearch called" << sync_endl;
@@ -1576,7 +1576,7 @@ moves_loop: // When in check, search starts from here
 
       // Make and search the move
       pos.do_move(move, st, givesCheck);
-      if (Options["Debug"])
+      if (PvNode && Options["Debug"])
       {
         sync_cout << "info depth " << depth
                   << " qsearch do_move " << UCI::move(move, pos.is_chess960())
@@ -1584,7 +1584,7 @@ moves_loop: // When in check, search starts from here
       }
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
-      if (Options["Debug"])
+      if (PvNode && Options["Debug"])
       {
         sync_cout << "info depth " << depth
                   << " qsearch undo_move " << UCI::move(move, pos.is_chess960())
