@@ -955,7 +955,7 @@ moves_loop: // When in check, search starts from here
 
     std::stringstream ss_out;
     // jomega: What moves are going to be considered at the beginning.
-    if (Options["Debug"] && false)
+    if (Options["Debug"] && true)
     {
       ss_out << "info movepicker_step_12";
       while ((move = my_mp.next_move(moveCountPruning)) != MOVE_NONE)
@@ -1144,6 +1144,10 @@ moves_loop: // When in check, search starts from here
         sync_cout << "info depth " << depth
                   << " do_move " << UCI::move(move, pos.is_chess960())
                   << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+        if (depth > 1)
+        {
+          sync_cout << "info interior_node_seen" << sync_endl;
+        }
       }
 
       // Step 16. Late moves reduction / extension (LMR, ~200 Elo)
@@ -1211,6 +1215,11 @@ moves_loop: // When in check, search starts from here
           // to be searched deeper than the first move, unless ttMove was extended by 2.
           Depth d = std::clamp(newDepth - r, 1, newDepth + (r < -1 && moveCount <= 5 && !doubleExtension));
 
+          if (Options["Debug"])
+          {
+            sync_cout << "info LMR reduction depth is " << d << sync_endl;
+          }
+
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, d, true);
 
           // If the son is reduced and fails high it will be re-searched at full depth
@@ -1226,6 +1235,11 @@ moves_loop: // When in check, search starts from here
       // Step 17. Full depth search when LMR is skipped or fails high
       if (doFullDepthSearch)
       {
+          if (Options["Debug"])
+          {
+            sync_cout << "info depth " << depth
+                      << " doFullDepthSearch was true." << sync_endl;
+          }
           value = -search<NonPV>(pos, ss+1, -(alpha+1), -alpha, newDepth, !cutNode);
 
           // If the move passed LMR update its stats
@@ -1236,6 +1250,14 @@ moves_loop: // When in check, search starts from here
 
               update_continuation_histories(ss, movedPiece, to_sq(move), bonus);
           }
+      }
+      else
+      {
+        if (Options["Debug"])
+        {
+        sync_cout << "info depth " << depth
+                  << " doFullDepthSearch was false." << sync_endl;
+        }
       }
 
       // For PV nodes only, do a full PV search on the first move or after a fail
@@ -1409,8 +1431,9 @@ moves_loop: // When in check, search starts from here
     Value bestValue, value, ttValue, futilityValue, futilityBase, oldAlpha;
     bool pvHit, givesCheck, captureOrPromotion;
     int moveCount;
+    bool interior_node_seen = false;
 
-    if (PvNode && Options["Debug"])
+    if (depth <= 0 && Options["Debug"])
     {
       sync_cout << "info depth " << depth
                 << " qsearch called" << sync_endl;
@@ -1431,7 +1454,13 @@ moves_loop: // When in check, search starts from here
     // Check for an immediate draw or maximum ply reached
     if (   pos.is_draw(ss->ply)
         || ss->ply >= MAX_PLY)
-        return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos) : VALUE_DRAW;
+    {
+      if (depth <= 0 && Options["Debug"])
+      {
+        sync_cout << "info leaf_node_seen draw or MAX_PLY" << sync_endl;
+      }
+      return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos) : VALUE_DRAW;
+    }
 
     assert(0 <= ss->ply && ss->ply < MAX_PLY);
 
@@ -1453,7 +1482,15 @@ moves_loop: // When in check, search starts from here
         && ttValue != VALUE_NONE // Only in case of TT access race
         && (ttValue >= beta ? (tte->bound() & BOUND_LOWER)
                             : (tte->bound() & BOUND_UPPER)))
-        return ttValue;
+        {
+          if (depth <= 0 && Options["Debug"])
+          {
+            sync_cout << "info TT hit "
+                      << " ttValue " << ttValue
+                      << sync_endl;
+          }
+          return ttValue;
+        }
 
     // Evaluate the position statically
     if (ss->inCheck)
@@ -1488,6 +1525,11 @@ moves_loop: // When in check, search starts from here
             if (!ss->ttHit)
                 tte->save(posKey, value_to_tt(bestValue, ss->ply), false, BOUND_LOWER,
                           DEPTH_NONE, MOVE_NONE, ss->staticEval);
+
+           if (depth <= 0 && Options["Debug"])
+           {
+             sync_cout << "info leaf_node_seen standing_pat" << sync_endl;
+           }
 
             return bestValue;
         }
@@ -1529,19 +1571,33 @@ moves_loop: // When in check, search starts from here
       {
 
           if (moveCount > 2)
-              continue;
+          {
+            if (depth <= 0 && Options["Debug"])
+            {
+              sync_cout << "info leaf_node_seen moveCount pruning" << sync_endl;
+            }
+            continue;
+          }
 
           futilityValue = futilityBase + PieceValue[EG][pos.piece_on(to_sq(move))];
 
           if (futilityValue <= alpha)
           {
               bestValue = std::max(bestValue, futilityValue);
+              if (depth <= 0 && Options["Debug"])
+              {
+                sync_cout << "info leaf_node_seen futilityValue lessequal alpha" << sync_endl;
+              }
               continue;
           }
 
           if (futilityBase <= alpha && !pos.see_ge(move, VALUE_ZERO + 1))
           {
               bestValue = std::max(bestValue, futilityBase);
+              if (depth <= 0 && Options["Debug"])
+              {
+                sync_cout << "info leaf_node_seen futilityBase lessequal alpha" << sync_endl;
+              }
               continue;
           }
       }
@@ -1549,7 +1605,13 @@ moves_loop: // When in check, search starts from here
       // Do not search moves with negative SEE values
       if (    bestValue > VALUE_TB_LOSS_IN_MAX_PLY
           && !pos.see_ge(move))
+      {
+          if (depth <= 0 && Options["Debug"])
+          {
+            sync_cout << "info leaf_node_seen bestValue greater than VALUE_TB_LOSS_IN_MAX_PLY" << sync_endl;
+          }
           continue;
+      }
 
       // Speculative prefetch as early as possible
       prefetch(TT.first_entry(pos.key_after(move)));
@@ -1558,6 +1620,10 @@ moves_loop: // When in check, search starts from here
       if (!pos.legal(move))
       {
           moveCount--;
+          if (depth <= 0 && Options["Debug"])
+          {
+            sync_cout << "info leaf_node_seen position illegal" << sync_endl;
+          }
           continue;
       }
 
@@ -1572,19 +1638,27 @@ moves_loop: // When in check, search starts from here
           && bestValue > VALUE_TB_LOSS_IN_MAX_PLY
           && (*contHist[0])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold
           && (*contHist[1])[pos.moved_piece(move)][to_sq(move)] < CounterMovePruneThreshold)
-          continue;
+      {
+        if (depth <= 0 && Options["Debug"])
+        {
+          sync_cout << "info leaf_node_seen not captureOrPromotion" << sync_endl;
+        }
+        continue;
+      }
 
       // Make and search the move
       pos.do_move(move, st, givesCheck);
-      if (PvNode && Options["Debug"])
+      if (depth <= 0 && Options["Debug"])
       {
         sync_cout << "info depth " << depth
                   << " qsearch do_move " << UCI::move(move, pos.is_chess960())
                   << " currmovenumber " << moveCount + thisThread->pvIdx << sync_endl;
+        sync_cout << "info interior_node_seen" << sync_endl;
+        interior_node_seen = true;
       }
       value = -qsearch<nodeType>(pos, ss+1, -beta, -alpha, depth - 1);
       pos.undo_move(move);
-      if (PvNode && Options["Debug"])
+      if (depth <= 0 && Options["Debug"])
       {
         sync_cout << "info depth " << depth
                   << " qsearch undo_move " << UCI::move(move, pos.is_chess960())
@@ -1613,6 +1687,9 @@ moves_loop: // When in check, search starts from here
           }
        }
     }
+
+    if (depth <= 0 && Options["Debug"] && !interior_node_seen)
+        sync_cout << "info leaf_node_seen" << sync_endl;
 
     // All legal moves have been searched. A special case: if we're in check
     // and no legal moves were found, it is checkmate.
