@@ -314,7 +314,7 @@ string UCI::value(Value v) {
 }
 
 
-/// UCI::wdl() report WDL statistics given an evaluation and a game ply, based on
+/// () report WDL statistics UCI::wdlgiven an evaluation and a game ply, based on
 /// data gathered for fishtest LTC games.
 
 string UCI::wdl(Value v, int ply) {

@@ -581,8 +581,15 @@ namespace {
         if (   Threads.stop.load(std::memory_order_relaxed)
             || pos.is_draw(ss->ply)
             || ss->ply >= MAX_PLY)
-            return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos)
+        {
+          if (Options["Debug"])
+          {
+            sync_cout << "info depth " << depth
+                  << " aborted search" << sync_endl;
+          }
+          return (ss->ply >= MAX_PLY && !ss->inCheck) ? evaluate(pos)
                                                         : value_draw(pos.this_thread());
+        }
 
         // Step 3. Mate distance pruning. Even if we mate at the next move our score
         // would be at best mate_in(ss->ply+1), but if alpha is already bigger because
@@ -593,7 +600,14 @@ namespace {
         alpha = std::max(mated_in(ss->ply), alpha);
         beta = std::min(mate_in(ss->ply+1), beta);
         if (alpha >= beta)
-            return alpha;
+        {
+          if (Options["Debug"])
+          {
+            sync_cout << "info depth " << depth
+                  << " mate distance pruning" << sync_endl;
+          }
+          return alpha;
+        }
     }
 
     assert(0 <= ss->ply && ss->ply < MAX_PLY);
@@ -783,7 +797,14 @@ namespace {
         &&  depth < 9
         &&  eval - futility_margin(depth, improving) >= beta
         &&  eval < VALUE_KNOWN_WIN) // Do not return unproven wins
-        return eval;
+    {
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " step 7 futility pruning" << sync_endl;
+      }
+      return eval;
+    }
 
     // Step 8. Null move search with verification search (~40 Elo)
     if (   !PvNode
@@ -979,8 +1000,24 @@ moves_loop: // When in check, search starts from here
     {
       assert(is_ok(move));
 
+      if (Options["Debug"])
+      {
+        sync_cout << "info depth " << depth
+                  << " next move " << UCI::move(move, pos.is_chess960())
+                  << " moveCountPruning " << moveCountPruning
+                  << sync_endl;
+      }
+
       if (move == excludedMove)
-          continue;
+      {
+        if (Options["Debug"])
+        {
+          sync_cout << "info depth " << depth
+                    << " move excluded " << UCI::move(move, pos.is_chess960())
+                    << sync_endl;
+        }
+        continue;
+      }
 
       // At root obey the "searchmoves" option and skip moves not listed in Root
       // Move List. As a consequence any illegal move is also skipped. In MultiPV
@@ -988,11 +1025,29 @@ moves_loop: // When in check, search starts from here
       // of lower "TB rank" if we are in a TB root position.
       if (rootNode && !std::count(thisThread->rootMoves.begin() + thisThread->pvIdx,
                                   thisThread->rootMoves.begin() + thisThread->pvLast, move))
-          continue;
+      {
+        if (Options["Debug"])
+        {
+          sync_cout << "info depth " << depth
+                    << " move excluded " << UCI::move(move, pos.is_chess960())
+                    << " not in root move list"
+                    << sync_endl;
+        }
+        continue;
+      }
 
       // Check for legality
       if (!rootNode && !pos.legal(move))
-          continue;
+      {
+        if (Options["Debug"])
+        {
+          sync_cout << "info depth " << depth
+                    << " move excluded " << UCI::move(move, pos.is_chess960())
+                    << " move illegal"
+                    << sync_endl;
+        }
+        continue;
+      }
 
       ss->moveCount = ++moveCount;
 
@@ -1019,6 +1074,16 @@ moves_loop: // When in check, search starts from here
           // Skip quiet moves if movecount exceeds our FutilityMoveCount threshold
           moveCountPruning = moveCount >= futility_move_count(improving, depth);
 
+          if (Options["Debug"])
+          {
+            sync_cout << "info depth " << depth
+                      << " improving " << improving
+                      << " moveCountPruning reset to " << moveCountPruning
+                      << " moveCount " << moveCount
+                      << " futility_move_count " << futility_move_count(improving, depth)
+                      << sync_endl;
+          }
+
           // Reduced depth of the next LMR search
           int lmrDepth = std::max(newDepth - reduction(improving, depth, moveCount), 0);
 
@@ -1029,11 +1094,29 @@ moves_loop: // When in check, search starts from here
               if (   !givesCheck
                   && lmrDepth < 1
                   && captureHistory[movedPiece][to_sq(move)][type_of(pos.piece_on(to_sq(move)))] < 0)
-                  continue;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " capture history pruned"
+                            << sync_endl;
+                }
+                continue;
+              }
 
               // SEE based pruning
               if (!pos.see_ge(move, Value(-218) * depth)) // (~25 Elo)
-                  continue;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " SEE based pruning"
+                            << sync_endl;
+                }
+                continue;
+              }
           }
           else
           {
@@ -1041,7 +1124,17 @@ moves_loop: // When in check, search starts from here
               if (   lmrDepth < 5
                   && (*contHist[0])[movedPiece][to_sq(move)] < CounterMovePruneThreshold
                   && (*contHist[1])[movedPiece][to_sq(move)] < CounterMovePruneThreshold)
-                  continue;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " Continuation history pruning"
+                            << " lmrDepth " << lmrDepth
+                            << sync_endl;
+                }
+                continue;
+              }
 
               // Futility pruning: parent node (~5 Elo)
               if (   lmrDepth < 7
@@ -1051,11 +1144,31 @@ moves_loop: // When in check, search starts from here
                     + (*contHist[1])[movedPiece][to_sq(move)]
                     + (*contHist[3])[movedPiece][to_sq(move)]
                     + (*contHist[5])[movedPiece][to_sq(move)] / 3 < 28255)
-                  continue;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " Futility pruning"
+                            << " lmrDepth " << lmrDepth
+                            << sync_endl;
+                }
+                continue;
+              }
 
               // Prune moves with negative SEE (~20 Elo)
               if (!pos.see_ge(move, Value(-(30 - std::min(lmrDepth, 18)) * lmrDepth * lmrDepth)))
-                  continue;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " negative SEE pruning"
+                            << " lmrDepth " << lmrDepth
+                            << sync_endl;
+                }
+                continue;
+              }
           }
       }
 
@@ -1103,7 +1216,18 @@ moves_loop: // When in check, search starts from here
           // that multiple moves fail high, and we can prune the whole subtree by returning
           // a soft bound.
           else if (singularBeta >= beta)
-              return singularBeta;
+          {
+            if (Options["Debug"])
+            {
+              sync_cout << "info depth " << depth
+                        << " move excluded " << UCI::move(move, pos.is_chess960())
+                        << " Multi-cut pruning"
+                        << " singularBeta " << singularBeta
+                        << " beta " << beta
+                        << sync_endl;
+            }
+            return singularBeta;
+          }
 
           // If the eval of ttMove is greater than beta we try also if there is another
           // move that pushes it over beta, if so also produce a cutoff.
@@ -1114,7 +1238,18 @@ moves_loop: // When in check, search starts from here
               ss->excludedMove = MOVE_NONE;
 
               if (value >= beta)
-                  return beta;
+              {
+                if (Options["Debug"])
+                {
+                  sync_cout << "info depth " << depth
+                            << " move excluded " << UCI::move(move, pos.is_chess960())
+                            << " ttValue greaterthanequal beta pruning"
+                            << " ttValue " << ttValue
+                            << " beta " << beta
+                            << sync_endl;
+                }
+                return beta;
+              }
           }
       }
       else if (   givesCheck
